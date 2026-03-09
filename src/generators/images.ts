@@ -29,23 +29,38 @@ export async function generateImages(script: string, outputDir: string, sceneCou
   for (let i = 0; i < scenes.length; i++) {
     console.log(`Generating image ${i + 1}/${scenes.length}...`);
 
-    const response = await openai.images.generate({
-      model: "dall-e-3",
-      prompt: `Cinematic, photorealistic scene for a YouTube Short: ${scenes[i]}. Vertical 9:16 aspect ratio, dramatic lighting, immersive POV perspective.`,
-      n: 1,
-      size: "1024x1792",
-    });
-
-    const imageUrl = response.data?.[0]?.url;
-    if (!imageUrl) throw new Error(`No image URL for scene ${i + 1}`);
-
-    // Download image
-    const imagePath = path.join(outputDir, `scene${i + 1}.png`);
-    const imageResponse = await axios.get(imageUrl, { responseType: "arraybuffer" });
-    fs.writeFileSync(imagePath, imageResponse.data);
-
-    imagePaths.push(imagePath);
-    console.log(`Saved: ${imagePath}`);
+    let attempts = 0;
+    const maxAttempts = 2;
+    while(attempts < maxAttempts){
+        try{
+            const safetyPrefix = attempts > 0 ? "Safe, family-friendly, " : "";
+            const response = await openai.images.generate({
+                model: "dall-e-3",
+                prompt: `Cinematic, photorealistic scene for a YouTube Short: ${scenes[i]}. Vertical 9:16 aspect ratio, dramatic lighting, immersive POV perspective.`,
+                n: 1,
+                size: "1024x1792",
+              });
+          
+              const imageUrl = response.data?.[0]?.url;
+              if (!imageUrl) throw new Error(`No image URL for scene ${i + 1}`);
+          
+              // Download image
+              const imagePath = path.join(outputDir, `scene${i + 1}.png`);
+              const imageResponse = await axios.get(imageUrl, { responseType: "arraybuffer" });
+              fs.writeFileSync(imagePath, imageResponse.data);
+          
+              imagePaths.push(imagePath);
+              console.log(`Saved: ${imagePath}`);
+              break;
+        } catch (err: any) {
+            attempts++;
+            if(err?.code === "content_policy_violation" && attempts < maxAttempts) {
+                console.log(` Safety filter triggered, retrying with safe prompt...`);
+            } else {
+                throw err;
+            }
+        }
+    }
   }
 
   return imagePaths;

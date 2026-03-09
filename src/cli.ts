@@ -7,6 +7,7 @@ import { generateVoice } from "./generators/voice";
 import { buildVideo } from "./video/buildVideo";
 import { uploadVideo } from "./youtube/upload";
 import { selectChannel } from "./youtube/channels";
+import { runPipeline } from "./pipeline/runPipeline";
 
 const program = new Command();
 
@@ -90,4 +91,12 @@ program
         });
     });
 
+program
+    .command("run")
+    .description("Run full pipeline: ideas → script → images → voice → video → upload")
+    .option("-c, --count <number>", "Number of videos to generate", "1")
+    .action(async (options) => {
+        const count = parseInt(options.count);
+        await runPipeline(count);
+    })
 program.parseAsync().catch(console.error);
