@@ -10,33 +10,30 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-export async function generateImages(script: string, outputDir: string, sceneCount: number = 3): Promise<string[]> {
-  // Split script into scenes
-  const sentences = script.split(/[.!?]+/).filter(s => s.trim().length > 0);
-  const scenesPerImage = Math.ceil(sentences.length / sceneCount);
-  const scenes: string[] = [];
-
-  for (let i = 0; i < sceneCount; i++) {
-    const chunk = sentences.slice(i * scenesPerImage, (i + 1) * scenesPerImage);
-    scenes.push(chunk.join(". ").trim());
-  }
-
+export async function generateImages(imagePrompts: string[], outputDir: string): Promise<string[]> {
+  
   // Ensure output directory exists
   fs.mkdirSync(outputDir, { recursive: true });
 
   const imagePaths: string[] = [];
 
-  for (let i = 0; i < scenes.length; i++) {
-    console.log(`Generating image ${i + 1}/${scenes.length}...`);
+  for (let i = 0; i < imagePrompts.length; i++) {
+    console.log(`Generating image ${i + 1}/${imagePrompts.length}...`);
 
     let attempts = 0;
     const maxAttempts = 2;
     while(attempts < maxAttempts){
         try{
-            const safetyPrefix = attempts > 0 ? "Safe, family-friendly, " : "";
-            const response = await openai.images.generate({
+            let prompt: string;
+            if (attempts === 0) {
+                prompt = `${imagePrompts[i]}. Vertical 9:16 aspect ratio, cinematic lighting.`;
+            } else {
+                // Completely rephrase for safety
+                prompt = `A beautiful, safe, family-friendly illustration: ${imagePrompts[i].replace(/blood|gore|violence|weapon|sword|gun|kill|death|war|battle|attack|fight|clash/gi, "adventure")}. Vertical 9:16 aspect ratio, cinematic lighting, digital art style.`;
+            }
+                const response = await openai.images.generate({
                 model: "dall-e-3",
-                prompt: `Cinematic, photorealistic scene for a YouTube Short: ${scenes[i]}. Vertical 9:16 aspect ratio, dramatic lighting, immersive POV perspective.`,
+                prompt,
                 n: 1,
                 size: "1024x1792",
               });
@@ -54,11 +51,14 @@ export async function generateImages(script: string, outputDir: string, sceneCou
               break;
         } catch (err: any) {
             attempts++;
-            if(err?.code === "content_policy_violation" && attempts < maxAttempts) {
-                console.log(` Safety filter triggered, retrying with safe prompt...`);
-            } else {
+            if (err?.code === "content_policy_violation" && attempts < maxAttempts) {
+                console.log(`  Safety filter triggered, retrying with rephrased prompt...`);
+              } else if (err?.code === "content_policy_violation") {
+                console.log(`  Skipping scene ${i + 1} — safety filter can't be bypassed.`);
+                break;
+              } else {
                 throw err;
-            }
+              }
         }
     }
   }

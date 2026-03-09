@@ -1,14 +1,15 @@
 import path from "path";
 import fs from "fs";
-import { generateIdeas } from "../generators/ideas";
-import { generateScript } from "../generators/script";
+import { generateIdeas, IdeaOptions } from "../generators/ideas";
+import { generateScript, VideoScript } from "../generators/script";
 import { generateImages } from "../generators/images";
 import { generateVoice } from "../generators/voice";
 import { buildVideo } from "../video/buildVideo";
 import { uploadVideo } from "../youtube/upload";
 import { selectChannel } from "../youtube/channels";
 
-export const runPipeline = async (videoCount: number = 1) => {
+export const runPipeline = async (options: IdeaOptions) => {
+    const { count } = options;
     console.log(`\n=== Starting pipeline for #{videoCount} video(s) ===\n`);
 
     //Select channel first (once for all videos)
@@ -17,7 +18,7 @@ export const runPipeline = async (videoCount: number = 1) => {
 
     //Step 1: Generate ideas
     console.log("\nStep 1: Generating ideas...");
-    const ideas = await generateIdeas(videoCount);
+    const ideas = await generateIdeas(options);
     ideas.forEach((idea, i) => console.log(` ${i + 1}. ${idea}`));
 
     for(let i = 0; i < ideas.length; i++) {
@@ -32,21 +33,25 @@ export const runPipeline = async (videoCount: number = 1) => {
 
             console.log(`\n--- Video ${videoNum}/${ideas.length}: "${idea}" ---\n`);
 
-            // Step 2: Generate script
+            // Step 2: Generate structured script with scenes
             console.log("Step 2: Generating script...");
-            const script = await generateScript(idea);
-            console.log(` Script: ${script}\n`);
+            const script: VideoScript = await generateScript(idea);
+            console.log(`  Title: ${script.title}`);
+            console.log(`  Scenes: ${script.scenes.length}`);
+            script.scenes.forEach((s, j) => console.log(`    ${j + 1}. ${s.narration}`));
 
             fs.mkdirSync(baseDir, {recursive: true});
-            fs.writeFileSync(path.join(baseDir, "script.txt"), script);
+            fs.writeFileSync(path.join(baseDir, "script.json"), JSON.stringify(script, null, 2));
 
-            //Step 3: Generate images
+            //Step 3: Generate images (one per scene)
             console.log("Step 3: Generating images...");
-            await generateImages(script, imagesDir, 3);
+            const imagePrompts = script.scenes.map(s => s.imagePrompt);
+            await generateImages(imagePrompts, imagesDir);
 
-            //Step 4: Generate voice
+            //Step 4: Generate voice from full narration
             console.log("\nStep 4: Generating voice...");
-            const audioPath = await generateVoice(script, audioDir);
+            const fullNarration = script.scenes.map(s => s.narration).join(" ");
+            const audioPath = await generateVoice(fullNarration, audioDir);
 
             //Step 5: Build video
             console.log("\nStep 5: Building video...");
@@ -56,8 +61,8 @@ export const runPipeline = async (videoCount: number = 1) => {
             console.log("\nStep 6: Uploading to YouTube...");
             await uploadVideo({
                 videoPath,
-                title: idea,
-                description: `${script}\n\n#Shorts #ai #pov #cinematic`,
+                title: script.title,
+                description: `${fullNarration}\n\n#Shorts #ai #pov #cinematic`,
                 tags: ["ai", "shorts", "pov", "cinematic"],
                 channelId
             });
@@ -70,5 +75,5 @@ export const runPipeline = async (videoCount: number = 1) => {
         }
     }
 
-    console.log(`\n=== Pipeline complete! ${videoCount} video(s) created and uploaded ===\n`)
+    console.log(`\n=== Pipeline complete! ${options.count} video(s) created and uploaded ===\n`)
 }

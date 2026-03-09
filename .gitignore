@@ -1,8 +1,6 @@
-credentials.json
-token.json
 node_modules
+dist
+output
 .env
-token.json
-output/
-dist/
 credentials.json
+token.json

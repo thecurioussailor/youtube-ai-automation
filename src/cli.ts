@@ -20,8 +20,16 @@ program
     .command("ideas")
     .description("Generate video ideas")
     .option("-c, --count <number>", "Number of ideas", "5")
+    .option("-s, --style <style>", "Style: pov, storytime, didyouknow, whatif, ranked, scary, motivation")
+    .option("-n, --niche <niche>", "Niche/topic: history, science, finance, fitness, etc.")
+    .option("-p, --prompt <prompt>", "Custom prompt for idea generation")
     .action(async (options) => {
-        const ideas = await generateIdeas(parseInt(options.count));
+        const ideas = await generateIdeas({
+            count: parseInt(options.count),
+            style: options.style,
+            niche: options.niche,
+            customPrompt: options.prompt,
+        });
         console.log("\nGenerated Ideas:\n");
         ideas.forEach((idea, i) => console.log(`${i + 1}. ${idea}`));
     });
@@ -33,8 +41,12 @@ program
     .action( async (idea) => {
         console.log(`Generating script for: "${idea}"\n`);
         const script = await generateScript(idea);
-        console.log("Script:\n");
-        console.log(script);
+        console.log(`Title: ${script.title}\n`);
+        script.scenes.forEach((s, i) => {
+            console.log(`Scene ${i + 1}:`);
+            console.log(`  Narration: ${s.narration}`);
+            console.log(`  Image: ${s.imagePrompt}\n`);
+        });
     })
 
 program
@@ -42,11 +54,10 @@ program
     .description("Generate images from a script")
     .argument("<script>", "The script to generate images for")
     .option("-s, --scenes <number>", "Number of scenes", "3")
-    .action(async (script, options) => {
-        const sceneCount = parseInt(options.scenes);
-        console.log(`Generating ${sceneCount} images...\n`);
+    .action(async (prompts) => {
+        console.log(`Generating ${prompts.length} images...\n`);
         const outputDir = path.join(process.cwd(), "output", "images");
-        const images = await generateImages(script, outputDir, sceneCount);
+        const images = await generateImages(prompts, outputDir);
         console.log(`\nDone! ${images.length} images saved to output/images/`);
 });
 
@@ -95,8 +106,15 @@ program
     .command("run")
     .description("Run full pipeline: ideas → script → images → voice → video → upload")
     .option("-c, --count <number>", "Number of videos to generate", "1")
+    .option("-s, --style <style>", "Style: pov, storytime, didyouknow, whatif, ranked, scary, motivation")
+    .option("-n, --niche <niche>", "Niche/topic area")
+    .option("-p, --prompt <prompt>", "Custom prompt for idea generation")
     .action(async (options) => {
-        const count = parseInt(options.count);
-        await runPipeline(count);
-    })
+        await runPipeline({
+            count: parseInt(options.count),
+            style: options.style,
+            niche: options.niche,
+            customPrompt: options.prompt,
+        });
+    });
 program.parseAsync().catch(console.error);
