@@ -1,3 +1,4 @@
+//This module is for elevenlabs voice generation with word-level timestamps that is not working in free tier.
 import axios from "axios";
 import fs from "fs";
 import path from "path";
