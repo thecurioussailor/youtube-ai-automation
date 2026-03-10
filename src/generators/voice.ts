@@ -1,15 +1,10 @@
-import OpenAI from "openai";
+//This module is for elevenlabs voice generation with word-level timestamps that is not working in free tier.
+import axios from "axios";
 import fs from "fs";
 import path from "path";
 import dotenv from "dotenv";
-import ffmpeg from "fluent-ffmpeg";
-import ffmpegStatic from "ffmpeg-static";
-import ffprobeStatic from "ffprobe-static";
 
 dotenv.config();
-
-ffmpeg.setFfmpegPath(ffmpegStatic as string);
-ffmpeg.setFfprobePath(ffprobeStatic.path);
 
 export interface WordTimestamp {
     word: string;
@@ -22,49 +17,81 @@ export interface VoiceResult {
     timestamps: WordTimestamp[];
 }
 
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-});
-
 export const generateVoice = async (script: string, outputDir: string): Promise<VoiceResult> => {
-    fs.mkdirSync(outputDir, { recursive: true });
+    const apiKey = process.env.ELEVENLABS_API_KEY;
+    if (!apiKey) throw new Error("ELEVENLABS_API_KEY not set in .env");
 
+    // Default voice - "Adam" (deep, cinematic)
+    const voiceId = "pNInz6obpgDQGcFmaJgB";
+
+    fs.mkdirSync(outputDir, { recursive: true});
+
+    //Use with-timestamps endpoint for word-level sync
+    const response = await axios.post(
+        `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/with-timestamps`,
+        {
+            text: script,
+            model_id: "eleven_multilingual_v2",
+            voice_settings: {
+                stability: 0.5,
+                similarity_boost: 0.75,
+            }
+        },
+        {
+            headers: {
+                "xi-api-key": apiKey,
+                "Content-Type": "application/json",
+            },
+        }
+    );
+
+    // Decode base64 audio
+    const audioBase64 = response.data.audio_base64;
+    const audioBuffer = Buffer.from(audioBase64, "base64");
     const audioPath = path.join(outputDir, "voice.mp3");
-
-    const response = await openai.audio.speech.create({
-        model: "tts-1",
-        voice: "onyx",
-        input: script,
-    });
-
-    const buffer = Buffer.from(await response.arrayBuffer());
-    fs.writeFileSync(audioPath, buffer);
+    fs.writeFileSync(audioPath, audioBuffer);
     console.log(`Saved: ${audioPath}`);
 
-    // Get actual audio duration for timing
-    const audioDuration = await getAudioDuration(audioPath);
+    // Extract word timestamps
+    const alignment = response.data.alignment;
+    const timestamps: WordTimestamp[] = [];
 
-    // Estimate word timestamps from audio duration
-    const words = script.split(/\s+/).filter(w => w.length > 0);
-    const timePerWord = audioDuration / words.length;
+    if (alignment && alignment.characters && alignment.character_start_times_seconds && alignment.character_end_times_seconds) {
+        const chars: string[] = alignment.characters;
+        const starts: number[] = alignment.character_start_times_seconds;
+        const ends: number[] = alignment.character_end_times_seconds;
 
-    const timestamps: WordTimestamp[] = words.map((word, i) => ({
-        word,
-        start: i * timePerWord,
-        end: (i + 1) * timePerWord,
-    }));
+        // Group characters into words
+        let currentWord = "";
+        let wordStart = 0;
+        let wordEnd = 0;
 
+        for (let i = 0; i < chars.length; i++) {
+            if (chars[i] === " " || i === chars.length - 1) {
+                if (i === chars.length - 1 && chars[i] !== " ") {
+                    currentWord += chars[i];
+                    wordEnd = ends[i];
+                }
+                if (currentWord.trim().length > 0) {
+                    timestamps.push({
+                        word: currentWord.trim(),
+                        start: wordStart,
+                        end: wordEnd,
+                    });
+                }
+                currentWord = "";
+                wordStart = starts[i + 1] || 0;
+            } else {
+                if (currentWord === "") wordStart = starts[i];
+                currentWord += chars[i];
+                wordEnd = ends[i];
+            }
+        }
+    }
+
+    // Save timestamps
     fs.writeFileSync(path.join(outputDir, "timestamps.json"), JSON.stringify(timestamps, null, 2));
-    console.log(`Saved: ${timestamps.length} word timestamps (estimated from ${audioDuration.toFixed(1)}s audio)`);
+    console.log(`Saved: ${timestamps.length} word timestamps`);
 
     return { audioPath, timestamps };
-};
-
-function getAudioDuration(audioPath: string): Promise<number> {
-    return new Promise((resolve, reject) => {
-        ffmpeg.ffprobe(audioPath, (err, metadata) => {
-            if (err) return reject(err);
-            resolve(metadata.format.duration || 10);
-        });
-    });
 }
