@@ -7,6 +7,7 @@ import { generateVoice } from "../generators/voice";
 import { buildVideo } from "../video/buildVideo";
 import { uploadVideo } from "../youtube/upload";
 import { selectChannel } from "../youtube/channels";
+import { generateSubtitleFile } from "../utils/subtitles";
 
 export const runPipeline = async (options: IdeaOptions) => {
     const { count } = options;
@@ -51,11 +52,16 @@ export const runPipeline = async (options: IdeaOptions) => {
             //Step 4: Generate voice from full narration
             console.log("\nStep 4: Generating voice...");
             const fullNarration = script.scenes.map(s => s.narration).join(" ");
-            const audioPath = await generateVoice(fullNarration, audioDir);
+            const voiceResult = await generateVoice(fullNarration, audioDir);
+
+            //Step 4.5: Generate subtitles
+            console.log("\nStep 4.5: Generating subtitles...");
+            const subtitlePath = generateSubtitleFile(voiceResult.timestamps, baseDir);
+
 
             //Step 5: Build video
             console.log("\nStep 5: Building video...");
-            const videoPath = await buildVideo(imagesDir, audioPath, videosDir, `${videoNum}.mp4`);
+            const videoPath = await buildVideo(imagesDir, voiceResult.audioPath, videosDir, `${videoNum}.mp4`, subtitlePath);
 
             //Step 6: Upload to YouTube
             console.log("\nStep 6: Uploading to YouTube...");

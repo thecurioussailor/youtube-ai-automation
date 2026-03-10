@@ -12,7 +12,8 @@ export const buildVideo = async (
     imagesDir: string,
     audioPath: string,
     outputDir: string,
-    outputFilename: string = "video.mp4"
+    outputFilename: string = "video.mp4",
+    subtitlePath?: string
 ): Promise<string> => {
     fs.mkdirSync(outputDir, { recursive: true});
     const outputPath = path.join(outputDir, outputFilename);
@@ -38,6 +39,13 @@ export const buildVideo = async (
     //Add last image again (ffmpeg concat demuxer quick)
     fs.writeFileSync(concatFilePath, concatContent + `\nfile '${images[images.length - 1]}'`);
 
+    // Build video filter with optional subtitles
+    let videoFilter = "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2";
+    if (subtitlePath) {
+        const escapedPath = subtitlePath.replace(/\\/g, "/").replace(/:/g, "\\:");
+        videoFilter += `,ass='${escapedPath}'`;
+    }
+
     return new Promise((resolve, reject) => {
         ffmpeg()
             .input(concatFilePath)
@@ -48,8 +56,8 @@ export const buildVideo = async (
                 "-c:a aac",
                 "-pix_fmt yuv420p",
                 "-shortest",
-                "-vf scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2",
-              ])        
+                `-vf ${videoFilter}`,
+            ])
             .output(outputPath)
             .on("start", (cmd) => console.log("FFmpeg started..."))
             .on("end", () => {
